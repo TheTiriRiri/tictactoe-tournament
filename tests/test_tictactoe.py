@@ -1529,5 +1529,112 @@ class TestWinTargetWithCustomNames(unittest.TestCase):
         self.assertEqual(winner.name, "O'Brien")
 
 
+# ===========================================================================
+# WinningLine tests
+# ===========================================================================
+
+class TestWinningLine(unittest.TestCase):
+    """Tests for the winning_line attribute on TicTacToeGame."""
+
+    def setUp(self) -> None:
+        self.game = TicTacToeGame()
+
+    # -- initial / mid-game / draw: winning_line is None --
+
+    def test_winning_line_is_none_initially(self) -> None:
+        """winning_line should be None on a fresh game."""
+        self.assertIsNone(self.game.winning_line)
+
+    def test_winning_line_is_none_during_gameplay(self) -> None:
+        """winning_line should remain None while the game is in progress."""
+        self.game.make_move(0, 0)  # X
+        self.assertIsNone(self.game.winning_line)
+        self.game.make_move(1, 1)  # O
+        self.assertIsNone(self.game.winning_line)
+
+    def test_winning_line_is_none_on_draw(self) -> None:
+        """winning_line should be None when the game ends in a draw."""
+        _force_draw(self.game)
+        self.assertTrue(self.game.game_over)
+        self.assertIsNone(self.game.winner)
+        self.assertIsNone(self.game.winning_line)
+
+    # -- X wins via row 0 --
+
+    def test_x_wins_row_0(self) -> None:
+        """X wins top row; winning_line should be [(0,0), (0,1), (0,2)]."""
+        # X(0,0), O(1,0), X(0,1), O(1,1), X(0,2)
+        _force_x_win(self.game)
+        self.assertEqual(self.game.winner, "X")
+        self.assertEqual(self.game.winning_line, [(0, 0), (0, 1), (0, 2)])
+
+    # -- O wins via column 1 --
+
+    def test_o_wins_col_1(self) -> None:
+        """O wins column 1; winning_line should be [(0,1), (1,1), (2,1)]."""
+        # X(0,0), O(0,1), X(2,0), O(1,1), X(2,2), O(2,1)
+        _play_moves(self.game, [(0, 0), (0, 1), (2, 0), (1, 1), (2, 2), (2, 1)])
+        self.assertEqual(self.game.winner, "O")
+        self.assertEqual(self.game.winning_line, [(0, 1), (1, 1), (2, 1)])
+
+    # -- X wins via main diagonal --
+
+    def test_x_wins_diagonal(self) -> None:
+        """X wins main diagonal; winning_line should be [(0,0), (1,1), (2,2)]."""
+        # X(0,0), O(0,1), X(1,1), O(0,2), X(2,2)
+        _play_moves(self.game, [(0, 0), (0, 1), (1, 1), (0, 2), (2, 2)])
+        self.assertEqual(self.game.winner, "X")
+        self.assertEqual(self.game.winning_line, [(0, 0), (1, 1), (2, 2)])
+
+    # -- X wins via anti-diagonal --
+
+    def test_x_wins_anti_diagonal(self) -> None:
+        """X wins anti-diagonal; winning_line should be [(0,2), (1,1), (2,0)]."""
+        # X(0,2), O(0,0), X(1,1), O(1,0), X(2,0)
+        _play_moves(self.game, [(0, 2), (0, 0), (1, 1), (1, 0), (2, 0)])
+        self.assertEqual(self.game.winner, "X")
+        self.assertEqual(self.game.winning_line, [(0, 2), (1, 1), (2, 0)])
+
+    # -- reset clears winning_line --
+
+    def test_winning_line_resets_to_none(self) -> None:
+        """After a win, reset() should clear winning_line back to None."""
+        _force_x_win(self.game)
+        self.assertIsNotNone(self.game.winning_line)
+        self.game.reset()
+        self.assertIsNone(self.game.winning_line)
+
+    # -- winning_line matches WINNING_LINES constant --
+
+    def test_winning_line_matches_winning_lines_constant(self) -> None:
+        """The returned winning_line should be one of the entries in WINNING_LINES."""
+        _force_x_win(self.game)
+        self.assertIn(self.game.winning_line, WINNING_LINES)
+
+    def test_each_winning_line_entry_is_reachable(self) -> None:
+        """Verify that every entry in WINNING_LINES can appear as winning_line."""
+        # Build move sequences that win along each of the 8 lines.
+        # Each sequence: X plays the 3 cells of the line, O fills non-conflicting cells.
+        win_sequences = {
+            # Rows
+            0: [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2)],          # row 0
+            1: [(1, 0), (0, 0), (1, 1), (0, 1), (1, 2)],          # row 1
+            2: [(2, 0), (0, 0), (2, 1), (0, 1), (2, 2)],          # row 2
+            # Columns
+            3: [(0, 0), (0, 1), (1, 0), (0, 2), (2, 0)],          # col 0
+            4: [(0, 1), (0, 0), (1, 1), (1, 0), (2, 1)],          # col 1
+            5: [(0, 2), (0, 0), (1, 2), (1, 0), (2, 2)],          # col 2
+            # Diagonals
+            6: [(0, 0), (0, 1), (1, 1), (0, 2), (2, 2)],          # main diag
+            7: [(0, 2), (0, 0), (1, 1), (1, 0), (2, 0)],          # anti diag
+        }
+        for idx, moves in win_sequences.items():
+            with self.subTest(winning_line_index=idx):
+                game = TicTacToeGame()
+                _play_moves(game, moves)
+                self.assertEqual(game.winner, "X")
+                self.assertEqual(game.winning_line, WINNING_LINES[idx])
+
+
 if __name__ == "__main__":
     unittest.main()

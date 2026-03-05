@@ -1,6 +1,6 @@
 # Tic-Tac-Toe Tournament — Product Requirements Document
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** 2026-03-05
 **Status:** Completed
 
@@ -54,6 +54,8 @@ A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game
 | F-13 | Draw detection (full board with no winner) | Must |
 | F-14 | Move blocking after the game ends | Must |
 | F-15 | Move blocking on occupied cells | Must |
+| F-16 | Winning line highlight — thick line drawn through the 3 winning cells | Must |
+| F-17 | Move blocking after tournament winner is determined | Must |
 
 ### 4.3 Tournament Mode — 3-Player Rotation
 
@@ -106,7 +108,7 @@ src/
 
 tests/
 ├── __init__.py
-└── test_tictactoe.py        # unit tests (197 tests)
+└── test_tictactoe.py        # unit tests (207 tests)
 ```
 
 ### 6.1 Logic Layer (`tictactoe_logic.py`)
@@ -114,7 +116,7 @@ tests/
 | Class | Responsibility |
 |-------|----------------|
 | `Player` | Stores player name, symbol, and win count |
-| `TicTacToeGame` | Board state, move validation, win/draw detection |
+| `TicTacToeGame` | Board state, move validation, win/draw detection, winning line tracking |
 | `Tournament` | 3-player management, rotation, scoreboard, win target |
 
 ### 6.2 GUI Layer (`tictactoe_gui.py`)
@@ -194,7 +196,8 @@ The player who went first sits out. The other player stays (as X). The waiting p
 | Tournament — edge cases | 7 | Indices, ranges, instance independence |
 | Tournament — custom names | 31 | Names, Unicode, special characters, persistence through rotation/reset |
 | Tournament — win target | 33 | Default/custom values, tournament winner detection, persistence, edge cases |
-| **Total** | **197** | |
+| TicTacToeGame — winning line | 10 | Initial state, during gameplay, draw, all 8 lines, reset |
+| **Total** | **207** | |
 
 ---
 
@@ -221,7 +224,7 @@ python3 -m unittest discover tests
 |----|---------|-------------|
 | B-01 | AI mode | Computer as one of the players (minimax / random) |
 | B-02 | Network mode | Play over LAN / internet (socket / websocket) |
-| B-03 | Animations | Animated X/O drawing, winning line highlighting |
+| B-03 | Animations | Animated X/O drawing, winning line animation |
 | B-04 | Sound effects | Audio feedback on move, win, draw |
 | B-05 | Board configuration | NxN board with configurable number in a line to win |
 | B-06 | Game history | Save results to file / database |
@@ -241,3 +244,4 @@ python3 -m unittest discover tests
 | **Permanent symbol** | A unique player icon (X, O, △) that does not change throughout the tournament |
 | **Board mark** | X or O — dynamically assigned depending on position in the rotation |
 | **Win target** | The number of round wins a player must reach to win the tournament (default: 3) |
+| **Winning line** | A visual line drawn through the 3 cells that form the winning combination |

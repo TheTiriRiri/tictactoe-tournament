@@ -193,14 +193,29 @@ class TicTacToeGUI:
 
         if not (0 <= row <= 2 and 0 <= col <= 2):
             return
+        if self.tournament.get_tournament_winner() is not None:
+            return
 
         game = self.tournament.game
         mark = game.current_player
         if game.make_move(row, col):
             self._draw_mark(row, col, mark)
+            if game.winner is not None and game.winning_line is not None:
+                self._draw_winning_line(game.winning_line, game.winner)
             self._update_display()
-            if game.game_over:
+            if game.game_over and self.tournament.get_tournament_winner() is None:
                 self.next_btn.config(state="normal")
+
+    def _draw_winning_line(self, cells: list[tuple[int, int]], winner: str) -> None:
+        """Draw a thick line through the centers of the 3 winning cells."""
+        color = self.COLOR_X if winner == "X" else self.COLOR_O
+        first_row, first_col = cells[0]
+        last_row, last_col = cells[2]
+        x1 = first_col * self.CELL_SIZE + self.CELL_SIZE // 2
+        y1 = first_row * self.CELL_SIZE + self.CELL_SIZE // 2
+        x2 = last_col * self.CELL_SIZE + self.CELL_SIZE // 2
+        y2 = last_row * self.CELL_SIZE + self.CELL_SIZE // 2
+        self.canvas.create_line(x1, y1, x2, y2, fill=color, width=5, capstyle="round")
 
     def _draw_mark(self, row: int, col: int, mark: str) -> None:
         """Draw an X or O in the specified cell."""

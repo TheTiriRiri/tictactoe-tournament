@@ -41,6 +41,7 @@ class TicTacToeGame:
         ]
         self.current_player: str = "X"
         self.winner: Optional[str] = None
+        self.winning_line: Optional[list[tuple[int, int]]] = None
         self.game_over: bool = False
 
     def make_move(self, row: int, col: int) -> bool:
@@ -69,10 +70,11 @@ class TicTacToeGame:
         return all(self.board[r][c] is not None for r in range(3) for c in range(3))
 
     def _check_winner(self) -> Optional[str]:
-        """Return the winning mark ('X' or 'O') or None if no winner yet."""
+        """Return the winning mark ('X' or 'O') or None. Stores winning cells in self.winning_line."""
         for line in WINNING_LINES:
             values = [self.board[r][c] for r, c in line]
             if values[0] is not None and values[0] == values[1] == values[2]:
+                self.winning_line = list(line)
                 return values[0]
         return None
 
