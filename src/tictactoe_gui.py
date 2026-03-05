@@ -5,9 +5,9 @@ from typing import Optional
 from src.tictactoe_logic import Tournament
 
 
-def ask_player_names(parent: tk.Tk) -> Optional[list[str]]:
-    """Show a dialog with 3 entry fields and return the player names, or None if cancelled."""
-    result: Optional[list[str]] = None
+def ask_player_names(parent: tk.Tk) -> Optional[tuple[list[str], int]]:
+    """Show a dialog with 3 name fields and a win target field. Returns (names, win_target) or None."""
+    result: Optional[tuple[list[str], int]] = None
 
     dialog = tk.Toplevel(parent)
     dialog.title("Enter Player Names")
@@ -29,14 +29,26 @@ def ask_player_names(parent: tk.Tk) -> Optional[list[str]]:
         entry.grid(row=i + 1, column=1, padx=(5, 20), pady=5)
         entries.append(entry)
 
+    # Win target field
+    tk.Label(dialog, text="Wins needed to win:", font=("Arial", 12)).grid(
+        row=4, column=0, padx=(20, 5), pady=(10, 5), sticky="e",
+    )
+    win_target_entry = tk.Entry(dialog, font=("Arial", 12), width=5)
+    win_target_entry.insert(0, "3")
+    win_target_entry.grid(row=4, column=1, padx=(5, 20), pady=(10, 5), sticky="w")
+
     def on_start() -> None:
-        """Collect names from entries and close the dialog."""
+        """Collect names and win target from entries and close the dialog."""
         nonlocal result
         names = []
         for i, entry in enumerate(entries):
             name = entry.get().strip()
             names.append(name if name else defaults[i])
-        result = names
+        try:
+            win_target = max(1, int(win_target_entry.get().strip()))
+        except ValueError:
+            win_target = 3
+        result = (names, win_target)
         dialog.destroy()
 
     def on_close() -> None:
@@ -46,7 +58,7 @@ def ask_player_names(parent: tk.Tk) -> Optional[list[str]]:
 
     tk.Button(
         dialog, text="Start Game", font=("Arial", 13, "bold"), command=on_start,
-    ).grid(row=4, column=0, columnspan=2, pady=(10, 15))
+    ).grid(row=5, column=0, columnspan=2, pady=(10, 15))
 
     dialog.protocol("WM_DELETE_WINDOW", on_close)
 
@@ -72,7 +84,7 @@ class TicTacToeGUI:
     COLOR_LINE = "#334155"
     COLOR_PANEL = "#e2e8f0"
 
-    def __init__(self, root: tk.Tk, names: Optional[list[str]] = None) -> None:
+    def __init__(self, root: tk.Tk, names: Optional[list[str]] = None, win_target: int = 3) -> None:
         """Set up the window, canvas, info panels, and buttons."""
         self.root = root
         self.root.title("Tic-tac-toe — 3-Player Tournament")
@@ -80,7 +92,8 @@ class TicTacToeGUI:
         self.root.configure(bg=self.COLOR_BG)
 
         self.player_names = names
-        self.tournament = Tournament(names=self.player_names)
+        self.win_target = win_target
+        self.tournament = Tournament(names=self.player_names, win_target=self.win_target)
 
         # --- Top info panel: who's playing, who's waiting ---
         info_frame = tk.Frame(root, bg=self.COLOR_BG)
@@ -128,6 +141,12 @@ class TicTacToeGUI:
             bg=self.COLOR_PANEL,
         ).pack(pady=(5, 2))
 
+        self.target_var = tk.StringVar()
+        tk.Label(
+            score_frame, textvariable=self.target_var,
+            font=self.FONT_INFO, bg=self.COLOR_PANEL, fg="#64748b",
+        ).pack(pady=(0, 2))
+
         self.score_var = tk.StringVar()
         tk.Label(
             score_frame, textvariable=self.score_var,
@@ -174,14 +193,29 @@ class TicTacToeGUI:
 
         if not (0 <= row <= 2 and 0 <= col <= 2):
             return
+        if self.tournament.get_tournament_winner() is not None:
+            return
 
         game = self.tournament.game
         mark = game.current_player
         if game.make_move(row, col):
             self._draw_mark(row, col, mark)
+            if game.winner is not None and game.winning_line is not None:
+                self._draw_winning_line(game.winning_line, game.winner)
             self._update_display()
-            if game.game_over:
+            if game.game_over and self.tournament.get_tournament_winner() is None:
                 self.next_btn.config(state="normal")
+
+    def _draw_winning_line(self, cells: list[tuple[int, int]], winner: str) -> None:
+        """Draw a thick line through the centers of the 3 winning cells."""
+        color = self.COLOR_X if winner == "X" else self.COLOR_O
+        first_row, first_col = cells[0]
+        last_row, last_col = cells[2]
+        x1 = first_col * self.CELL_SIZE + self.CELL_SIZE // 2
+        y1 = first_row * self.CELL_SIZE + self.CELL_SIZE // 2
+        x2 = last_col * self.CELL_SIZE + self.CELL_SIZE // 2
+        y2 = last_row * self.CELL_SIZE + self.CELL_SIZE // 2
+        self.canvas.create_line(x1, y1, x2, y2, fill=color, width=5, capstyle="round")
 
     def _draw_mark(self, row: int, col: int, mark: str) -> None:
         """Draw an X or O in the specified cell."""
@@ -203,12 +237,21 @@ class TicTacToeGUI:
             f"Playing:  {xp.name} ({xp.symbol}) as X   vs   {op.name} ({op.symbol}) as O"
         )
         self.waiting_var.set(f"Waiting:  {wp.name} ({wp.symbol})")
-        self.status_var.set(t.get_status())
+        self.target_var.set(f"First to {t.win_target} wins")
         self.score_var.set(
             f"{t.players[0].name} ({t.players[0].symbol}): {t.players[0].wins}    "
             f"{t.players[1].name} ({t.players[1].symbol}): {t.players[1].wins}    "
             f"{t.players[2].name} ({t.players[2].symbol}): {t.players[2].wins}"
         )
+
+        champion = t.get_tournament_winner()
+        if champion is not None:
+            self.status_var.set(
+                f"Congratulations! {champion.name} wins the tournament!"
+            )
+            self.next_btn.config(state="disabled")
+        else:
+            self.status_var.set(t.get_status())
 
     def _next_round(self) -> None:
         """Advance to the next round after a game ends."""
@@ -240,12 +283,13 @@ def main() -> None:
     root = tk.Tk()
     root.withdraw()
 
-    names = ask_player_names(root)
-    if names is None:
+    setup = ask_player_names(root)
+    if setup is None:
         return
 
+    names, win_target = setup
     root.deiconify()
-    TicTacToeGUI(root, names=names)
+    TicTacToeGUI(root, names=names, win_target=win_target)
     root.mainloop()
 
 

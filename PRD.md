@@ -1,6 +1,6 @@
 # Tic-Tac-Toe Tournament — Product Requirements Document
 
-**Version:** 1.0
+**Version:** 1.2
 **Date:** 2026-03-05
 **Status:** Completed
 
@@ -8,7 +8,7 @@
 
 ## 1. Product Summary
 
-A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game is fully mouse-driven, built in Python with a tkinter graphical interface. Two players compete on the board while the third waits — after each round, players rotate automatically.
+A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game is fully mouse-driven, built in Python with a tkinter graphical interface. Two players compete on the board while the third waits — after each round, players rotate automatically. The tournament ends when a player reaches a configurable win target.
 
 ---
 
@@ -41,6 +41,8 @@ A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game
 | F-02 | Default names "Player 1/2/3" when a field is left empty | Must |
 | F-03 | Support for special characters and Unicode in names | Should |
 | F-04 | Closing the dialog (X) exits the application | Must |
+| F-05 | Win target input field with default value of 3 | Must |
+| F-06 | Win target validation — minimum value of 1, fallback to 3 on invalid input | Must |
 
 ### 4.2 Gameplay
 
@@ -52,6 +54,8 @@ A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game
 | F-13 | Draw detection (full board with no winner) | Must |
 | F-14 | Move blocking after the game ends | Must |
 | F-15 | Move blocking on occupied cells | Must |
+| F-16 | Winning line highlight — thick line drawn through the 3 winning cells | Must |
+| F-17 | Move blocking after tournament winner is determined | Must |
 
 ### 4.3 Tournament Mode — 3-Player Rotation
 
@@ -62,6 +66,9 @@ A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game
 | F-22 | Rotation on draw — the player who went first sits out, the other stays, the waiting player joins | Must |
 | F-23 | Each player has a permanent symbol (X, O, △) independent of board position | Must |
 | F-24 | Scoreboard tracking wins for each player | Must |
+| F-25 | Configurable win target — tournament ends when a player reaches the target | Must |
+| F-26 | Tournament winner announcement with congratulatory message | Must |
+| F-27 | "Next Round" button disabled after a player wins the tournament | Must |
 
 ### 4.4 Graphical User Interface
 
@@ -70,6 +77,7 @@ A desktop Tic-Tac-Toe application with a tournament mode for 3 players. The game
 | F-30 | Info panel — who is currently playing (as X/O) and who is waiting | Must |
 | F-31 | Status label — whose turn / who won / draw | Must |
 | F-32 | Scoreboard with win count for each player | Must |
+| F-32a | "First to N wins" label displayed on scoreboard | Must |
 | F-33 | "Next Round" button — rotation after game ends (disabled during play) | Must |
 | F-34 | "Restart Match" button — board reset without changing scores or rotation | Must |
 | F-35 | "New Tournament" button — full reset (scores, rotation, board) | Must |
@@ -100,7 +108,7 @@ src/
 
 tests/
 ├── __init__.py
-└── test_tictactoe.py        # unit tests (164 tests)
+└── test_tictactoe.py        # unit tests (207 tests)
 ```
 
 ### 6.1 Logic Layer (`tictactoe_logic.py`)
@@ -108,32 +116,36 @@ tests/
 | Class | Responsibility |
 |-------|----------------|
 | `Player` | Stores player name, symbol, and win count |
-| `TicTacToeGame` | Board state, move validation, win/draw detection |
-| `Tournament` | 3-player management, rotation, scoreboard |
+| `TicTacToeGame` | Board state, move validation, win/draw detection, winning line tracking |
+| `Tournament` | 3-player management, rotation, scoreboard, win target |
 
 ### 6.2 GUI Layer (`tictactoe_gui.py`)
 
 | Component | Responsibility |
 |-----------|----------------|
-| `ask_player_names()` | Startup dialog with name input fields |
+| `ask_player_names()` | Startup dialog with name input fields and win target setting |
 | `TicTacToeGUI` | Game window: canvas, info panel, scoreboard, buttons |
 
 ### 6.3 Flow Diagram
 
 ```
-[Start] → [Dialog: player names] → [Game window]
-                                         │
-                                    [Cell click]
-                                         │
-                                  [Move → check winner]
-                                     /         \
-                            [Game ongoing]   [Game over]
-                                                │
-                                      [Next Round / Restart]
-                                                │
-                                          [Player rotation]
-                                                │
-                                          [New round]
+[Start] → [Dialog: player names + win target] → [Game window]
+                                                      │
+                                                 [Cell click]
+                                                      │
+                                               [Move → check winner]
+                                                  /         \
+                                         [Game ongoing]   [Game over]
+                                                             │
+                                                   [Next Round / Restart]
+                                                             │
+                                                       [Player rotation]
+                                                             │
+                                                  [Check tournament winner]
+                                                      /            \
+                                              [Target reached]  [Continue]
+                                                    │                │
+                                           [Congratulations!]  [New round]
 ```
 
 ---
@@ -183,7 +195,9 @@ The player who went first sits out. The other player stays (as X). The waiting p
 | Tournament — multiple rounds | 3 | Rotation cycle, cumulative scores |
 | Tournament — edge cases | 7 | Indices, ranges, instance independence |
 | Tournament — custom names | 31 | Names, Unicode, special characters, persistence through rotation/reset |
-| **Total** | **164** | |
+| Tournament — win target | 33 | Default/custom values, tournament winner detection, persistence, edge cases |
+| TicTacToeGame — winning line | 10 | Initial state, during gameplay, draw, all 8 lines, reset |
+| **Total** | **207** | |
 
 ---
 
@@ -210,7 +224,7 @@ python3 -m unittest discover tests
 |----|---------|-------------|
 | B-01 | AI mode | Computer as one of the players (minimax / random) |
 | B-02 | Network mode | Play over LAN / internet (socket / websocket) |
-| B-03 | Animations | Animated X/O drawing, winning line highlighting |
+| B-03 | Animations | Animated X/O drawing, winning line animation |
 | B-04 | Sound effects | Audio feedback on move, win, draw |
 | B-05 | Board configuration | NxN board with configurable number in a line to win |
 | B-06 | Game history | Save results to file / database |
@@ -229,3 +243,5 @@ python3 -m unittest discover tests
 | **Rotation** | Player swap after a round ends according to established rules |
 | **Permanent symbol** | A unique player icon (X, O, △) that does not change throughout the tournament |
 | **Board mark** | X or O — dynamically assigned depending on position in the rotation |
+| **Win target** | The number of round wins a player must reach to win the tournament (default: 3) |
+| **Winning line** | A visual line drawn through the 3 cells that form the winning combination |

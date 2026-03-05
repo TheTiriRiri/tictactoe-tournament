@@ -1196,5 +1196,445 @@ class TestCustomNamesEdgeCases(unittest.TestCase):
         self.assertIn("wins", status)
 
 
+# ===========================================================================
+# Win Target tests (new)
+# ===========================================================================
+
+class TestWinTargetDefault(unittest.TestCase):
+    """Test that win_target defaults to 3."""
+
+    def test_default_win_target_is_3(self) -> None:
+        """Tournament with no win_target argument should default to 3."""
+        t = Tournament()
+        self.assertEqual(t.win_target, 3)
+
+    def test_default_win_target_with_custom_names(self) -> None:
+        """Tournament with custom names but no win_target should default to 3."""
+        t = Tournament(names=["Alice", "Bob", "Charlie"])
+        self.assertEqual(t.win_target, 3)
+
+
+class TestWinTargetCustomValues(unittest.TestCase):
+    """Test that custom win_target values are stored correctly."""
+
+    def test_win_target_of_1(self) -> None:
+        t = Tournament(win_target=1)
+        self.assertEqual(t.win_target, 1)
+
+    def test_win_target_of_5(self) -> None:
+        t = Tournament(win_target=5)
+        self.assertEqual(t.win_target, 5)
+
+    def test_win_target_of_10(self) -> None:
+        t = Tournament(win_target=10)
+        self.assertEqual(t.win_target, 10)
+
+    def test_win_target_with_names_and_target(self) -> None:
+        """Both custom names and custom win_target should work together."""
+        t = Tournament(names=["Alice", "Bob", "Charlie"], win_target=7)
+        self.assertEqual(t.win_target, 7)
+        self.assertEqual(t.players[0].name, "Alice")
+
+
+class TestGetTournamentWinnerNone(unittest.TestCase):
+    """Test get_tournament_winner returns None when no one has reached the target."""
+
+    def test_no_winner_at_start(self) -> None:
+        """Fresh tournament should have no tournament winner."""
+        t = Tournament()
+        self.assertIsNone(t.get_tournament_winner())
+
+    def test_no_winner_after_one_win(self) -> None:
+        """With default target of 3, one win is not enough."""
+        t = Tournament()
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertIsNone(t.get_tournament_winner())
+
+    def test_no_winner_after_two_wins(self) -> None:
+        """With default target of 3, two wins is not enough."""
+        t = Tournament()
+        _force_x_win(t.game)
+        t.advance_round()
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertEqual(t.players[0].wins, 2)
+        self.assertIsNone(t.get_tournament_winner())
+
+    def test_no_winner_with_draws_only(self) -> None:
+        """Draws never produce a tournament winner."""
+        t = Tournament()
+        for _ in range(5):
+            _force_draw(t.game)
+            t.advance_round()
+        self.assertIsNone(t.get_tournament_winner())
+
+
+class TestGetTournamentWinnerCorrectPlayer(unittest.TestCase):
+    """Test get_tournament_winner returns the correct player at win_target."""
+
+    def test_player_reaches_default_target_of_3(self) -> None:
+        """Player 1 wins 3 games and becomes tournament winner."""
+        t = Tournament()
+        for _ in range(3):
+            _force_x_win(t.game)
+            t.advance_round()
+        self.assertEqual(t.players[0].wins, 3)
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertIs(winner, t.players[0])
+
+    def test_o_player_reaches_target(self) -> None:
+        """Player 2 (O) wins enough games to reach the target."""
+        t = Tournament(win_target=2)
+        # Round 1: O (Player 2) wins
+        _force_o_win(t.game)
+        t.advance_round()
+        self.assertIsNone(t.get_tournament_winner())
+        # Round 2: Player 2 is now X, wins again
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertEqual(t.players[1].wins, 2)
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertIs(winner, t.players[1])
+
+    def test_winner_name_matches(self) -> None:
+        """Tournament winner should have the expected name."""
+        t = Tournament(names=["Alice", "Bob", "Charlie"], win_target=1)
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.name, "Alice")
+
+
+class TestTournamentWinnerExactlyAtTarget(unittest.TestCase):
+    """Test tournament winner after exactly win_target wins."""
+
+    def test_exactly_at_target_1(self) -> None:
+        t = Tournament(win_target=1)
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertEqual(t.players[0].wins, 1)
+        self.assertIsNotNone(t.get_tournament_winner())
+
+    def test_exactly_at_target_3(self) -> None:
+        t = Tournament(win_target=3)
+        for _ in range(3):
+            _force_x_win(t.game)
+            t.advance_round()
+        self.assertEqual(t.players[0].wins, 3)
+        self.assertIsNotNone(t.get_tournament_winner())
+
+    def test_exactly_at_target_5(self) -> None:
+        t = Tournament(win_target=5)
+        for _ in range(5):
+            _force_x_win(t.game)
+            t.advance_round()
+        self.assertEqual(t.players[0].wins, 5)
+        self.assertIsNotNone(t.get_tournament_winner())
+
+    def test_no_winner_one_below_target(self) -> None:
+        """With target=3, after 2 wins there should be no tournament winner."""
+        t = Tournament(win_target=3)
+        for _ in range(2):
+            _force_x_win(t.game)
+            t.advance_round()
+        self.assertEqual(t.players[0].wins, 2)
+        self.assertIsNone(t.get_tournament_winner())
+
+
+class TestWinTargetPersistsThroughRestartMatch(unittest.TestCase):
+    """Win target should not change when restart_match is called."""
+
+    def test_win_target_unchanged_after_restart(self) -> None:
+        t = Tournament(win_target=7)
+        t.game.make_move(0, 0)
+        t.restart_match()
+        self.assertEqual(t.win_target, 7)
+
+    def test_win_target_unchanged_after_multiple_restarts(self) -> None:
+        t = Tournament(win_target=5)
+        for _ in range(3):
+            t.game.make_move(0, 0)
+            t.restart_match()
+        self.assertEqual(t.win_target, 5)
+
+    def test_tournament_winner_still_works_after_restart(self) -> None:
+        """Win accumulation and target checking should work across restarts."""
+        t = Tournament(win_target=2)
+        _force_x_win(t.game)
+        t.advance_round()
+        t.restart_match()  # restart mid-game
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertIsNotNone(t.get_tournament_winner())
+
+
+class TestWinTargetPersistsThroughResetTournament(unittest.TestCase):
+    """Win target should not change when reset_tournament is called."""
+
+    def test_win_target_unchanged_after_reset(self) -> None:
+        t = Tournament(win_target=7)
+        _force_x_win(t.game)
+        t.advance_round()
+        t.reset_tournament()
+        self.assertEqual(t.win_target, 7)
+
+    def test_tournament_winner_none_after_reset(self) -> None:
+        """After reset_tournament, no one should be tournament winner (scores are 0)."""
+        t = Tournament(win_target=2)
+        _force_x_win(t.game)
+        t.advance_round()
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertIsNotNone(t.get_tournament_winner())
+        t.reset_tournament()
+        self.assertIsNone(t.get_tournament_winner())
+
+    def test_can_reach_target_again_after_reset(self) -> None:
+        """After reset, a player can win enough games to reach win_target again."""
+        t = Tournament(win_target=1)
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertIsNotNone(t.get_tournament_winner())
+        t.reset_tournament()
+        self.assertIsNone(t.get_tournament_winner())
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertIsNotNone(t.get_tournament_winner())
+
+
+class TestWinTargetOfOne(unittest.TestCase):
+    """Win target of 1 means the tournament is won after the first win."""
+
+    def test_x_wins_first_game_wins_tournament(self) -> None:
+        t = Tournament(win_target=1)
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertIs(winner, t.players[0])
+
+    def test_o_wins_first_game_wins_tournament(self) -> None:
+        t = Tournament(win_target=1)
+        _force_o_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertIs(winner, t.players[1])
+
+    def test_draw_first_then_win_tournament(self) -> None:
+        """A draw does not win; the first actual win should win the tournament."""
+        t = Tournament(win_target=1)
+        _force_draw(t.game)
+        t.advance_round()
+        self.assertIsNone(t.get_tournament_winner())
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertIsNotNone(t.get_tournament_winner())
+
+
+class TestMultiplePlayersCloseToTarget(unittest.TestCase):
+    """Only the player who reaches the target should be the tournament winner."""
+
+    def test_one_player_ahead_others_behind(self) -> None:
+        """With target=3, one player at 2 wins and another at 1 — no winner yet."""
+        t = Tournament(win_target=3)
+        # Player 1 wins twice as X
+        _force_x_win(t.game)
+        t.advance_round()
+        _force_x_win(t.game)
+        t.advance_round()
+        self.assertEqual(t.players[0].wins, 2)
+        # Now O wins (a different player)
+        _force_o_win(t.game)
+        t.advance_round()
+        # Player 0 still at 2, another player at 1
+        self.assertIsNone(t.get_tournament_winner())
+
+    def test_first_to_reach_target_wins(self) -> None:
+        """The first player to reach win_target is the tournament winner."""
+        t = Tournament(win_target=2)
+        # Round 1: X (Player 1) wins -> P1: 1 win
+        _force_x_win(t.game)
+        t.advance_round()
+        # Round 2: O wins (Player 3 now O) -> some other player gets 1 win
+        _force_o_win(t.game)
+        t.advance_round()
+        # At this point P1=1, P3=1
+        self.assertIsNone(t.get_tournament_winner())
+        # Now let the current X player win to reach 2
+        current_x_player = t.players[t.x_player_idx]
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.wins, 2)
+
+    def test_two_players_at_target_minus_one(self) -> None:
+        """Two players both at target-1, then one wins — only that one is winner."""
+        t = Tournament(win_target=2)
+        # P1 wins round 1
+        _force_x_win(t.game)
+        t.advance_round()  # P1=1
+        # O wins round 2 (Player 3 is now O after X win rotation)
+        _force_o_win(t.game)
+        t.advance_round()  # P1=1, P3=1 (was Player 3 who became O)
+        # Find which player has 1 win besides P1
+        self.assertEqual(t.players[0].wins, 1)
+        # Now let P1 win again to reach target
+        # We need P1 to be X. Let's check and play accordingly.
+        # Force whoever is X to win
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertGreaterEqual(winner.wins, 2)
+
+
+class TestWinTargetWithCustomNames(unittest.TestCase):
+    """Win target should work correctly with custom player names."""
+
+    def test_custom_names_and_win_target(self) -> None:
+        t = Tournament(names=["Alice", "Bob", "Charlie"], win_target=2)
+        self.assertEqual(t.win_target, 2)
+        self.assertEqual(t.players[0].name, "Alice")
+
+    def test_tournament_winner_has_custom_name(self) -> None:
+        t = Tournament(names=["Alice", "Bob", "Charlie"], win_target=1)
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.name, "Alice")
+
+    def test_unicode_names_with_win_target(self) -> None:
+        t = Tournament(names=["\u00C9milie", "\u5F35\u4E09", "\u041F\u0435\u0442\u0440"], win_target=1)
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.name, "\u00C9milie")
+
+    def test_special_char_names_with_win_target(self) -> None:
+        t = Tournament(names=["O'Brien", "Dr. No", "Player #3!"], win_target=2)
+        _force_x_win(t.game)
+        t.advance_round()
+        _force_x_win(t.game)
+        t.advance_round()
+        winner = t.get_tournament_winner()
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.name, "O'Brien")
+
+
+# ===========================================================================
+# WinningLine tests
+# ===========================================================================
+
+class TestWinningLine(unittest.TestCase):
+    """Tests for the winning_line attribute on TicTacToeGame."""
+
+    def setUp(self) -> None:
+        self.game = TicTacToeGame()
+
+    # -- initial / mid-game / draw: winning_line is None --
+
+    def test_winning_line_is_none_initially(self) -> None:
+        """winning_line should be None on a fresh game."""
+        self.assertIsNone(self.game.winning_line)
+
+    def test_winning_line_is_none_during_gameplay(self) -> None:
+        """winning_line should remain None while the game is in progress."""
+        self.game.make_move(0, 0)  # X
+        self.assertIsNone(self.game.winning_line)
+        self.game.make_move(1, 1)  # O
+        self.assertIsNone(self.game.winning_line)
+
+    def test_winning_line_is_none_on_draw(self) -> None:
+        """winning_line should be None when the game ends in a draw."""
+        _force_draw(self.game)
+        self.assertTrue(self.game.game_over)
+        self.assertIsNone(self.game.winner)
+        self.assertIsNone(self.game.winning_line)
+
+    # -- X wins via row 0 --
+
+    def test_x_wins_row_0(self) -> None:
+        """X wins top row; winning_line should be [(0,0), (0,1), (0,2)]."""
+        # X(0,0), O(1,0), X(0,1), O(1,1), X(0,2)
+        _force_x_win(self.game)
+        self.assertEqual(self.game.winner, "X")
+        self.assertEqual(self.game.winning_line, [(0, 0), (0, 1), (0, 2)])
+
+    # -- O wins via column 1 --
+
+    def test_o_wins_col_1(self) -> None:
+        """O wins column 1; winning_line should be [(0,1), (1,1), (2,1)]."""
+        # X(0,0), O(0,1), X(2,0), O(1,1), X(2,2), O(2,1)
+        _play_moves(self.game, [(0, 0), (0, 1), (2, 0), (1, 1), (2, 2), (2, 1)])
+        self.assertEqual(self.game.winner, "O")
+        self.assertEqual(self.game.winning_line, [(0, 1), (1, 1), (2, 1)])
+
+    # -- X wins via main diagonal --
+
+    def test_x_wins_diagonal(self) -> None:
+        """X wins main diagonal; winning_line should be [(0,0), (1,1), (2,2)]."""
+        # X(0,0), O(0,1), X(1,1), O(0,2), X(2,2)
+        _play_moves(self.game, [(0, 0), (0, 1), (1, 1), (0, 2), (2, 2)])
+        self.assertEqual(self.game.winner, "X")
+        self.assertEqual(self.game.winning_line, [(0, 0), (1, 1), (2, 2)])
+
+    # -- X wins via anti-diagonal --
+
+    def test_x_wins_anti_diagonal(self) -> None:
+        """X wins anti-diagonal; winning_line should be [(0,2), (1,1), (2,0)]."""
+        # X(0,2), O(0,0), X(1,1), O(1,0), X(2,0)
+        _play_moves(self.game, [(0, 2), (0, 0), (1, 1), (1, 0), (2, 0)])
+        self.assertEqual(self.game.winner, "X")
+        self.assertEqual(self.game.winning_line, [(0, 2), (1, 1), (2, 0)])
+
+    # -- reset clears winning_line --
+
+    def test_winning_line_resets_to_none(self) -> None:
+        """After a win, reset() should clear winning_line back to None."""
+        _force_x_win(self.game)
+        self.assertIsNotNone(self.game.winning_line)
+        self.game.reset()
+        self.assertIsNone(self.game.winning_line)
+
+    # -- winning_line matches WINNING_LINES constant --
+
+    def test_winning_line_matches_winning_lines_constant(self) -> None:
+        """The returned winning_line should be one of the entries in WINNING_LINES."""
+        _force_x_win(self.game)
+        self.assertIn(self.game.winning_line, WINNING_LINES)
+
+    def test_each_winning_line_entry_is_reachable(self) -> None:
+        """Verify that every entry in WINNING_LINES can appear as winning_line."""
+        # Build move sequences that win along each of the 8 lines.
+        # Each sequence: X plays the 3 cells of the line, O fills non-conflicting cells.
+        win_sequences = {
+            # Rows
+            0: [(0, 0), (1, 0), (0, 1), (1, 1), (0, 2)],          # row 0
+            1: [(1, 0), (0, 0), (1, 1), (0, 1), (1, 2)],          # row 1
+            2: [(2, 0), (0, 0), (2, 1), (0, 1), (2, 2)],          # row 2
+            # Columns
+            3: [(0, 0), (0, 1), (1, 0), (0, 2), (2, 0)],          # col 0
+            4: [(0, 1), (0, 0), (1, 1), (1, 0), (2, 1)],          # col 1
+            5: [(0, 2), (0, 0), (1, 2), (1, 0), (2, 2)],          # col 2
+            # Diagonals
+            6: [(0, 0), (0, 1), (1, 1), (0, 2), (2, 2)],          # main diag
+            7: [(0, 2), (0, 0), (1, 1), (1, 0), (2, 0)],          # anti diag
+        }
+        for idx, moves in win_sequences.items():
+            with self.subTest(winning_line_index=idx):
+                game = TicTacToeGame()
+                _play_moves(game, moves)
+                self.assertEqual(game.winner, "X")
+                self.assertEqual(game.winning_line, WINNING_LINES[idx])
+
+
 if __name__ == "__main__":
     unittest.main()
