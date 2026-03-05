@@ -1636,5 +1636,172 @@ class TestWinningLine(unittest.TestCase):
                 self.assertEqual(game.winning_line, WINNING_LINES[idx])
 
 
+# ===========================================================================
+# N-player Tournament tests
+# ===========================================================================
+
+class TestTournamentValidation(unittest.TestCase):
+    """Tests for player count validation."""
+
+    def test_zero_players_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            Tournament(names=[])
+
+    def test_one_player_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            Tournament(names=["Solo"])
+
+    def test_six_players_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            Tournament(names=["A", "B", "C", "D", "E", "F"])
+
+    def test_two_players_ok(self) -> None:
+        t = Tournament(names=["A", "B"])
+        self.assertEqual(len(t.players), 2)
+
+    def test_five_players_ok(self) -> None:
+        t = Tournament(names=["A", "B", "C", "D", "E"])
+        self.assertEqual(len(t.players), 5)
+
+
+class TestTournament2Players(unittest.TestCase):
+    """Tests for 2-player tournament (no waiting queue)."""
+
+    def setUp(self) -> None:
+        self.t = Tournament(names=["Alice", "Bob"])
+
+    def test_initial_setup(self) -> None:
+        self.assertEqual(self.t.x_player_idx, 0)
+        self.assertEqual(self.t.o_player_idx, 1)
+        self.assertEqual(self.t.waiting_queue, [])
+
+    def test_symbols(self) -> None:
+        self.assertEqual(self.t.players[0].symbol, "X")
+        self.assertEqual(self.t.players[1].symbol, "O")
+
+    def test_x_wins_stays_x(self) -> None:
+        _force_x_win(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.players[0].wins, 1)
+        self.assertEqual(self.t.x_player_idx, 0)
+        self.assertEqual(self.t.o_player_idx, 1)
+
+    def test_o_wins_becomes_x(self) -> None:
+        _force_o_win(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.players[1].wins, 1)
+        self.assertEqual(self.t.x_player_idx, 1)
+        self.assertEqual(self.t.o_player_idx, 0)
+
+    def test_draw_swaps(self) -> None:
+        _force_draw(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.x_player_idx, 1)
+        self.assertEqual(self.t.o_player_idx, 0)
+
+    def test_reset_tournament(self) -> None:
+        _force_x_win(self.t.game)
+        self.t.advance_round()
+        self.t.reset_tournament()
+        self.assertEqual(self.t.x_player_idx, 0)
+        self.assertEqual(self.t.o_player_idx, 1)
+        self.assertEqual(self.t.waiting_queue, [])
+        self.assertEqual(self.t.players[0].wins, 0)
+
+
+class TestTournament4Players(unittest.TestCase):
+    """Tests for 4-player tournament."""
+
+    def setUp(self) -> None:
+        self.t = Tournament(names=["A", "B", "C", "D"])
+
+    def test_initial_queue(self) -> None:
+        self.assertEqual(self.t.waiting_queue, [2, 3])
+
+    def test_symbols(self) -> None:
+        symbols = [p.symbol for p in self.t.players]
+        self.assertEqual(symbols, ["X", "O", "\u25B3", "\u25CF"])
+
+    def test_x_wins_rotation(self) -> None:
+        """X wins: loser goes to back of queue, next in queue becomes O."""
+        _force_x_win(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.x_player_idx, 0)  # winner stays
+        self.assertEqual(self.t.o_player_idx, 2)   # from queue
+        self.assertEqual(self.t.waiting_queue, [3, 1])  # loser at back
+
+    def test_o_wins_rotation(self) -> None:
+        """O wins: loser goes to back of queue, winner becomes X."""
+        _force_o_win(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.x_player_idx, 1)  # winner
+        self.assertEqual(self.t.o_player_idx, 2)   # from queue
+        self.assertEqual(self.t.waiting_queue, [3, 0])  # loser at back
+
+    def test_queue_order_after_multiple_rounds(self) -> None:
+        """Verify FIFO queue order through multiple X wins."""
+        # Round 1: X(0) wins, loser(1) -> back, queue was [2,3] -> O=2, queue=[3,1]
+        _force_x_win(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.waiting_queue, [3, 1])
+
+        # Round 2: X(0) wins again, loser(2) -> back, queue was [3,1] -> O=3, queue=[1,2]
+        _force_x_win(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.waiting_queue, [1, 2])
+
+    def test_get_waiting_players(self) -> None:
+        waiting = self.t.get_waiting_players()
+        self.assertEqual(len(waiting), 2)
+        self.assertEqual(waiting[0].name, "C")
+        self.assertEqual(waiting[1].name, "D")
+
+    def test_reset_tournament(self) -> None:
+        _force_x_win(self.t.game)
+        self.t.advance_round()
+        self.t.reset_tournament()
+        self.assertEqual(self.t.waiting_queue, [2, 3])
+        self.assertEqual(self.t.x_player_idx, 0)
+        self.assertEqual(self.t.o_player_idx, 1)
+
+
+class TestTournament5Players(unittest.TestCase):
+    """Tests for 5-player tournament."""
+
+    def setUp(self) -> None:
+        self.t = Tournament(names=["A", "B", "C", "D", "E"])
+
+    def test_initial_queue(self) -> None:
+        self.assertEqual(self.t.waiting_queue, [2, 3, 4])
+
+    def test_symbols(self) -> None:
+        symbols = [p.symbol for p in self.t.players]
+        self.assertEqual(symbols, ["X", "O", "\u25B3", "\u25CF", "\u25A0"])
+
+    def test_full_rotation_x_wins(self) -> None:
+        """If X keeps winning, every other player should cycle through O position."""
+        seen_as_o = []
+        for _ in range(4):
+            seen_as_o.append(self.t.o_player_idx)
+            _force_x_win(self.t.game)
+            self.t.advance_round()
+        # Player 0 always X, everyone else should have been O
+        self.assertEqual(sorted(seen_as_o), [1, 2, 3, 4])
+
+    def test_draw_rotation(self) -> None:
+        """Draw: first player goes to back of queue."""
+        _force_draw(self.t.game)
+        self.t.advance_round()
+        self.assertEqual(self.t.x_player_idx, 1)   # stayed
+        self.assertEqual(self.t.o_player_idx, 2)    # from queue
+        self.assertEqual(self.t.waiting_queue, [3, 4, 0])  # first went to back
+
+    def test_get_waiting_players(self) -> None:
+        waiting = self.t.get_waiting_players()
+        self.assertEqual(len(waiting), 3)
+        names = [p.name for p in waiting]
+        self.assertEqual(names, ["C", "D", "E"])
+
+
 if __name__ == "__main__":
     unittest.main()
