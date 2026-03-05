@@ -1,75 +1,136 @@
-"""Tkinter GUI for Tic-tac-toe with 3-player rotation."""
+"""Tkinter GUI for Tic-tac-toe with 2-5 player rotation and login/register."""
 
 import tkinter as tk
 from typing import Optional
 from src.tictactoe_logic import Tournament
+from src.auth import AuthManager
 
 
-def ask_player_names(parent: tk.Tk) -> Optional[tuple[list[str], int]]:
-    """Show a dialog with 3 name fields and a win target field. Returns (names, win_target) or None."""
+def ask_login_register(parent: tk.Tk, auth: AuthManager) -> Optional[tuple[list[str], int]]:
+    """Multi-step dialog: player count -> login/register each -> win target. Returns (names, win_target) or None."""
     result: Optional[tuple[list[str], int]] = None
 
     dialog = tk.Toplevel(parent)
-    dialog.title("Enter Player Names")
+    dialog.title("Tournament Setup")
     dialog.resizable(False, False)
     dialog.grab_set()
 
-    tk.Label(dialog, text="Enter names for each player:", font=("Arial", 14)).grid(
-        row=0, column=0, columnspan=2, padx=20, pady=(15, 10),
-    )
+    container = tk.Frame(dialog)
+    container.pack(padx=20, pady=15)
 
-    entries: list[tk.Entry] = []
-    defaults = ["Player 1", "Player 2", "Player 3"]
-    for i in range(3):
-        tk.Label(dialog, text=f"Player {i + 1}:", font=("Arial", 12)).grid(
-            row=i + 1, column=0, padx=(20, 5), pady=5, sticky="e",
-        )
-        entry = tk.Entry(dialog, font=("Arial", 12), width=20)
-        entry.insert(0, "")
-        entry.grid(row=i + 1, column=1, padx=(5, 20), pady=5)
-        entries.append(entry)
+    # Shared state
+    player_count = tk.IntVar(value=3)
+    logged_in_names: list[str] = []
 
-    # Win target field
-    tk.Label(dialog, text="Wins needed to win:", font=("Arial", 12)).grid(
-        row=4, column=0, padx=(20, 5), pady=(10, 5), sticky="e",
-    )
-    win_target_entry = tk.Entry(dialog, font=("Arial", 12), width=5)
-    win_target_entry.insert(0, "3")
-    win_target_entry.grid(row=4, column=1, padx=(5, 20), pady=(10, 5), sticky="w")
+    def clear_container() -> None:
+        """Remove all widgets from the container."""
+        for w in container.winfo_children():
+            w.destroy()
 
-    def on_start() -> None:
-        """Collect names and win target from entries and close the dialog."""
-        nonlocal result
-        names = []
-        for i, entry in enumerate(entries):
-            name = entry.get().strip()
-            names.append(name if name else defaults[i])
-        try:
-            win_target = max(1, int(win_target_entry.get().strip()))
-        except ValueError:
-            win_target = 3
-        result = (names, win_target)
-        dialog.destroy()
+    def show_count_screen() -> None:
+        """Screen 1: Choose number of players."""
+        clear_container()
+        tk.Label(container, text="How many players?", font=("Arial", 14)).pack(pady=(0, 10))
+        for n in range(2, 6):
+            tk.Radiobutton(
+                container, text=f"{n} players", variable=player_count, value=n,
+                font=("Arial", 12),
+            ).pack(anchor="w")
+        tk.Button(
+            container, text="Next", font=("Arial", 13, "bold"),
+            command=lambda: show_login_screen(0),
+        ).pack(pady=(10, 0))
+
+    def show_login_screen(player_idx: int) -> None:
+        """Screen 2: Login or register for player N."""
+        clear_container()
+        total = player_count.get()
+        logged_in_names[:] = logged_in_names[:player_idx]  # trim if going back
+
+        tk.Label(
+            container, text=f"Player {player_idx + 1} of {total}", font=("Arial", 14),
+        ).pack(pady=(0, 10))
+
+        tk.Label(container, text="Username:", font=("Arial", 12)).pack(anchor="w")
+        user_entry = tk.Entry(container, font=("Arial", 12), width=20)
+        user_entry.pack(pady=(0, 5))
+
+        tk.Label(container, text="Password:", font=("Arial", 12)).pack(anchor="w")
+        pass_entry = tk.Entry(container, font=("Arial", 12), width=20, show="*")
+        pass_entry.pack(pady=(0, 5))
+
+        error_var = tk.StringVar()
+        tk.Label(container, textvariable=error_var, font=("Arial", 10), fg="red").pack()
+
+        def do_auth(action: str) -> None:
+            """Try login or register, then advance to next player or win target."""
+            username = user_entry.get().strip()
+            password = pass_entry.get()
+
+            if action == "register":
+                ok, msg = auth.register(username, password)
+            else:
+                ok, msg = auth.login(username, password)
+
+            if not ok:
+                error_var.set(msg)
+                return
+
+            if username in logged_in_names:
+                error_var.set("This user is already logged in")
+                return
+
+            logged_in_names.append(username)
+
+            if len(logged_in_names) < total:
+                show_login_screen(len(logged_in_names))
+            else:
+                show_win_target_screen()
+
+        btn_frame = tk.Frame(container)
+        btn_frame.pack(pady=(5, 0))
+        tk.Button(btn_frame, text="Login", font=("Arial", 12), command=lambda: do_auth("login")).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Register", font=("Arial", 12), command=lambda: do_auth("register")).pack(side="left", padx=5)
+
+        user_entry.focus_set()
+
+    def show_win_target_screen() -> None:
+        """Screen 3: Set win target."""
+        clear_container()
+        tk.Label(container, text="Wins needed to win tournament:", font=("Arial", 14)).pack(pady=(0, 10))
+
+        win_entry = tk.Entry(container, font=("Arial", 12), width=5)
+        win_entry.insert(0, "3")
+        win_entry.pack()
+
+        def on_start() -> None:
+            nonlocal result
+            try:
+                win_target = max(1, int(win_entry.get().strip()))
+            except ValueError:
+                win_target = 3
+            result = (list(logged_in_names), win_target)
+            dialog.destroy()
+
+        tk.Button(
+            container, text="Start Tournament", font=("Arial", 13, "bold"),
+            command=on_start,
+        ).pack(pady=(10, 0))
 
     def on_close() -> None:
         """Handle the dialog being closed without starting."""
         dialog.destroy()
         parent.destroy()
 
-    tk.Button(
-        dialog, text="Start Game", font=("Arial", 13, "bold"), command=on_start,
-    ).grid(row=5, column=0, columnspan=2, pady=(10, 15))
-
     dialog.protocol("WM_DELETE_WINDOW", on_close)
-
-    entries[0].focus_set()
+    show_count_screen()
     parent.wait_window(dialog)
 
     return result
 
 
 class TicTacToeGUI:
-    """A mouse-driven tkinter interface for 3-player Tic-tac-toe."""
+    """A mouse-driven tkinter interface for 2-5 player Tic-tac-toe."""
 
     CELL_SIZE = 120
     FONT_MARK = ("Arial", 40, "bold")
@@ -87,7 +148,7 @@ class TicTacToeGUI:
     def __init__(self, root: tk.Tk, names: Optional[list[str]] = None, win_target: int = 3) -> None:
         """Set up the window, canvas, info panels, and buttons."""
         self.root = root
-        self.root.title("Tic-tac-toe — 3-Player Tournament")
+        self.root.title("Tic-tac-toe \u2014 Tournament")
         self.root.resizable(False, False)
         self.root.configure(bg=self.COLOR_BG)
 
@@ -231,17 +292,21 @@ class TicTacToeGUI:
         t = self.tournament
         xp = t.get_x_player()
         op = t.get_o_player()
-        wp = t.get_waiting_player()
 
         self.playing_var.set(
             f"Playing:  {xp.name} ({xp.symbol}) as X   vs   {op.name} ({op.symbol}) as O"
         )
-        self.waiting_var.set(f"Waiting:  {wp.name} ({wp.symbol})")
+
+        waiting = t.get_waiting_players()
+        if waiting:
+            waiting_str = ", ".join(f"{p.name} ({p.symbol})" for p in waiting)
+            self.waiting_var.set(f"Waiting:  {waiting_str}")
+        else:
+            self.waiting_var.set("")
+
         self.target_var.set(f"First to {t.win_target} wins")
         self.score_var.set(
-            f"{t.players[0].name} ({t.players[0].symbol}): {t.players[0].wins}    "
-            f"{t.players[1].name} ({t.players[1].symbol}): {t.players[1].wins}    "
-            f"{t.players[2].name} ({t.players[2].symbol}): {t.players[2].wins}"
+            "    ".join(f"{p.name} ({p.symbol}): {p.wins}" for p in t.players)
         )
 
         champion = t.get_tournament_winner()
@@ -283,14 +348,18 @@ def main() -> None:
     root = tk.Tk()
     root.withdraw()
 
-    setup = ask_player_names(root)
+    auth = AuthManager(db_path="tournament.db")
+
+    setup = ask_login_register(root, auth)
     if setup is None:
+        auth.close()
         return
 
     names, win_target = setup
     root.deiconify()
     TicTacToeGUI(root, names=names, win_target=win_target)
     root.mainloop()
+    auth.close()
 
 
 if __name__ == "__main__":
