@@ -88,7 +88,7 @@ class TicTacToeGame:
 class Tournament:
     """Manages a 3-player rotation tournament."""
 
-    def __init__(self, names: Optional[list[str]] = None) -> None:
+    def __init__(self, names: Optional[list[str]] = None, win_target: int = 3) -> None:
         """Initialize the tournament with 3 players and the first match."""
         if names is None:
             names = ["Player 1", "Player 2", "Player 3"]
@@ -97,6 +97,7 @@ class Tournament:
             Player(names[1], "O"),
             Player(names[2], "\u25B3"),
         ]
+        self.win_target: int = win_target
         # Indices into self.players: who plays X, who plays O, who waits
         self.x_player_idx: int = 0
         self.o_player_idx: int = 1
@@ -136,6 +137,13 @@ class Tournament:
     def get_waiting_player(self) -> Player:
         """Return the player currently sitting out."""
         return self.players[self.waiting_idx]
+
+    def get_tournament_winner(self) -> Optional[Player]:
+        """Return the first player who reached win_target wins, or None."""
+        for player in self.players:
+            if player.wins >= self.win_target:
+                return player
+        return None
 
     def get_winner_player(self) -> Optional[Player]:
         """Return the Player who won, or None."""
