@@ -1,4 +1,4 @@
-"""Pure game logic for Tic-tac-toe with 3-player rotation."""
+"""Pure game logic for Tic-tac-toe with 2-5 player rotation."""
 
 from typing import Optional
 
@@ -15,6 +15,8 @@ WINNING_LINES = [
     [(0, 0), (1, 1), (2, 2)],
     [(0, 2), (1, 1), (2, 0)],
 ]
+
+SYMBOLS = ["X", "O", "\u25B3", "\u25CF", "\u25A0"]
 
 
 class Player:
@@ -88,25 +90,38 @@ class TicTacToeGame:
 
 
 class Tournament:
-    """Manages a 3-player rotation tournament."""
+    """Manages a 2-5 player rotation tournament."""
 
     def __init__(self, names: Optional[list[str]] = None, win_target: int = 3) -> None:
-        """Initialize the tournament with 3 players and the first match."""
+        """Initialize the tournament with 2-5 players and the first match."""
         if names is None:
             names = ["Player 1", "Player 2", "Player 3"]
+        if len(names) < 2 or len(names) > 5:
+            raise ValueError("Tournament requires 2 to 5 players")
         self.players: list[Player] = [
-            Player(names[0], "X"),
-            Player(names[1], "O"),
-            Player(names[2], "\u25B3"),
+            Player(names[i], SYMBOLS[i]) for i in range(len(names))
         ]
         self.win_target: int = win_target
-        # Indices into self.players: who plays X, who plays O, who waits
+        # Indices into self.players: who plays X, who plays O
         self.x_player_idx: int = 0
         self.o_player_idx: int = 1
-        self.waiting_idx: int = 2
+        # FIFO queue of waiting player indices
+        self.waiting_queue: list[int] = list(range(2, len(self.players)))
         # Track who went first (the X player) for draw rotation
         self.first_player_idx: int = 0
         self.game = TicTacToeGame()
+
+    @property
+    def waiting_idx(self) -> int:
+        """Return the first waiting player index (backward compatibility)."""
+        if self.waiting_queue:
+            return self.waiting_queue[0]
+        return -1
+
+    @waiting_idx.setter
+    def waiting_idx(self, value: int) -> None:
+        """Set the waiting queue to a single player (backward compatibility)."""
+        self.waiting_queue = [value]
 
     def reset_tournament(self) -> None:
         """Reset all scores and return to the initial player arrangement."""
@@ -114,7 +129,7 @@ class Tournament:
             p.wins = 0
         self.x_player_idx = 0
         self.o_player_idx = 1
-        self.waiting_idx = 2
+        self.waiting_queue = list(range(2, len(self.players)))
         self.first_player_idx = 0
         self.game.reset()
 
@@ -137,8 +152,12 @@ class Tournament:
         return self.players[self.o_player_idx]
 
     def get_waiting_player(self) -> Player:
-        """Return the player currently sitting out."""
-        return self.players[self.waiting_idx]
+        """Return the first waiting player."""
+        return self.players[self.waiting_queue[0]]
+
+    def get_waiting_players(self) -> list[Player]:
+        """Return all waiting players in queue order."""
+        return [self.players[i] for i in self.waiting_queue]
 
     def get_tournament_winner(self) -> Optional[Player]:
         """Return the first player who reached win_target wins, or None."""
@@ -168,28 +187,40 @@ class Tournament:
 
     def advance_round(self) -> None:
         """Rotate players after a game ends according to the rules."""
-        if self.game.winner == "X":
-            # X won: X stays as X, waiting player becomes O, loser (O) sits out
+        if not self.waiting_queue:
+            # 2-player mode: just swap who goes first
+            if self.game.winner == "X":
+                self.players[self.x_player_idx].wins += 1
+                # Winner stays as X, loser stays as O
+            elif self.game.winner == "O":
+                self.players[self.o_player_idx].wins += 1
+                # Winner becomes X
+                self.x_player_idx, self.o_player_idx = self.o_player_idx, self.x_player_idx
+            else:
+                # Draw: swap who goes first
+                self.x_player_idx, self.o_player_idx = self.o_player_idx, self.x_player_idx
+        elif self.game.winner == "X":
+            # X won: X stays as X, next waiting becomes O, loser (O) goes to back of queue
             loser_idx = self.o_player_idx
-            self.o_player_idx = self.waiting_idx
-            self.waiting_idx = loser_idx
+            self.o_player_idx = self.waiting_queue.pop(0)
+            self.waiting_queue.append(loser_idx)
             self.players[self.x_player_idx].wins += 1
         elif self.game.winner == "O":
-            # O won: O stays as X (winner goes first), waiting player becomes O, loser (X) sits out
+            # O won: O becomes X, next waiting becomes O, loser (X) goes to back of queue
             loser_idx = self.x_player_idx
             winner_idx = self.o_player_idx
             self.x_player_idx = winner_idx
-            self.o_player_idx = self.waiting_idx
-            self.waiting_idx = loser_idx
+            self.o_player_idx = self.waiting_queue.pop(0)
+            self.waiting_queue.append(loser_idx)
             self.players[winner_idx].wins += 1
         else:
-            # Draw: player who went first sits out, other stays, waiting joins
+            # Draw: player who went first goes to back of queue, other stays, next waiting joins
             sat_first = self.first_player_idx
             stayed = self.o_player_idx
-            new_joiner = self.waiting_idx
+            new_joiner = self.waiting_queue.pop(0)
             self.x_player_idx = stayed
             self.o_player_idx = new_joiner
-            self.waiting_idx = sat_first
+            self.waiting_queue.append(sat_first)
 
         self.first_player_idx = self.x_player_idx
         self.game.reset()
