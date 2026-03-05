@@ -166,6 +166,13 @@ class Tournament:
                 return player
         return None
 
+    def get_tournament_winner(self) -> Optional[Player]:
+        """Return the first player who reached win_target wins, or None."""
+        for player in self.players:
+            if player.wins >= self.win_target:
+                return player
+        return None
+
     def get_winner_player(self) -> Optional[Player]:
         """Return the Player who won, or None."""
         if self.game.winner == "X":
